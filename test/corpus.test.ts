@@ -7,8 +7,13 @@ import { classifyHeading } from "../src/anchors.js";
 
 // The corpus contains testimony, not traces, so it is used as a parse test:
 // the AAR parser and entity extraction run across every real AAR. Traces stay
-// synthetic (see examples/) until a trace adapter exists. These tests skip
-// cleanly when the sibling corpus repos aren't checked out alongside this one.
+// synthetic (see examples/) until a trace adapter exists.
+//
+// This suite is OPT-IN: it runs only when RUN_CORPUS=1 (and the sibling corpus
+// repos are checked out alongside this one). Its thresholds are tuned for the
+// full corpus, which drifts in size/shape between machines — so gating it keeps
+// `npm test` and the `prepublishOnly` publish gate from ever depending on a
+// local corpus. Run it deliberately with:  RUN_CORPUS=1 npm test
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -17,7 +22,7 @@ const CORPUS_DIRS = [
   join(repoRoot, "..", "tennis-team-manager", "docs"),
 ];
 const presentDirs = CORPUS_DIRS.filter((d) => existsSync(d));
-const haveCorpus = presentDirs.length > 0;
+const runCorpus = process.env.RUN_CORPUS === "1" && presentDirs.length > 0;
 
 function corpusFiles(): { name: string; path: string; text: string }[] {
   const out: { name: string; path: string; text: string }[] = [];
@@ -45,8 +50,8 @@ function headingsOf(text: string): string[] {
   return out;
 }
 
-describe.skipIf(!haveCorpus)("AAR corpus parse test", () => {
-  const files = haveCorpus ? corpusFiles() : [];
+describe.skipIf(!runCorpus)("AAR corpus parse test", () => {
+  const files = runCorpus ? corpusFiles() : [];
 
   it("has a non-trivial corpus to test against", () => {
     expect(files.length).toBeGreaterThan(50);
