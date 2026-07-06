@@ -9,6 +9,10 @@ A test suite tells you the code passes. It stays quiet about the moment the agen
 decided something on its own that you would have wanted to see. closedtab puts
 those moments on the page.
 
+> **New to this and want to start?** [`GETTING-STARTED.md`](../GETTING-STARTED.md)
+> is a from-zero walkthrough — install, let your coding agent write its first
+> record, and see a fully worked example. Start there, then come back for the why.
+
 ## Why it exists
 
 Agents now make decisions, take actions, and finish tasks that carry real weight.

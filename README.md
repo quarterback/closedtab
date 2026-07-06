@@ -18,6 +18,10 @@ records add up into a history of how the project actually got built.
 npm install -g closedtab
 ```
 
+**New here?** [`GETTING-STARTED.md`](./GETTING-STARTED.md) is a from-zero
+walkthrough — install, let your coding agent write its first record, and see a
+fully worked example — for people adopting closedtab in their own repo.
+
 ## The Agent Action Record
 
 ```

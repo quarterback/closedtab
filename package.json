@@ -43,7 +43,8 @@
   "files": [
     "dist",
     "README.md",
-    "WHY.md"
+    "WHY.md",
+    "GETTING-STARTED.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
