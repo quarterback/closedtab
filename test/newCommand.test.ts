@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
@@ -58,6 +58,51 @@ describe("runNew (interactive authoring)", () => {
     expect(md).toContain("edited `o27v2/web/app.py`");
     // skipped section keeps its guidance comment
     expect(md).toMatch(/## Decisions and follow-ups[\s\S]*<!--/);
+  });
+
+  it("--private routes the whole doc to the gitignored store, not to dir", async () => {
+    const root = mkTmp();
+    const path = await runNew(
+      { type: "record", title: "Sensitive run", dir: root, root, private: true },
+      drive(["", "", ""]), // record scaffolds blank: only branch/pr/commit are asked
+    );
+    expect(path).toBe(join(root, ".closedtab", "private", "aar-sensitive-run.private.md"));
+    expect(existsSync(join(root, "aar-sensitive-run.md"))).toBe(false);
+    expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain(".closedtab/");
+  });
+
+  it("an inline <!-- private --> region forks into a companion", async () => {
+    const root = mkTmp();
+    const answers = [
+      "", "", "", // branch, pr, commit
+      "the W column broke", ".", // reported
+      "a copy bug", ".", // root cause
+      "<!-- private -->", "token=abc123secret", "<!-- /private -->", ".", // fix (fenced)
+      ".", // decisions -> skip
+      "ran pytest", ".", // verified
+    ];
+    const path = await runNew({ type: "bugfix", title: "Fix WL", dir: root, root }, drive(answers));
+
+    expect(path).toBe(join(root, "aar-fix-wl.md"));
+    const pub = readFileSync(path, "utf8");
+    expect(pub).not.toContain("token=abc123secret");
+    expect(pub).toContain("closedtab-redacted");
+
+    const companion = join(root, ".closedtab", "private", "aar-fix-wl.private.md");
+    expect(existsSync(companion)).toBe(true);
+    expect(readFileSync(companion, "utf8")).toContain("token=abc123secret");
+    expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain(".closedtab/");
+  });
+
+  it("type private-note always writes to the store", async () => {
+    const root = mkTmp();
+    const path = await runNew(
+      { type: "private-note", title: "handoff", dir: root, root },
+      drive(["", "", "", "context", ".", "the secret", ".", "for the agent", "."]),
+    );
+    expect(path).toBe(join(root, ".closedtab", "private", "note-handoff.private.md"));
+    expect(readFileSync(path, "utf8")).toContain("the secret");
+    expect(readdirSync(root)).not.toContain("note-handoff.md");
   });
 
   it("does not overwrite an existing AAR — picks a -2 suffix", async () => {
