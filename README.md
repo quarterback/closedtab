@@ -66,15 +66,51 @@ and any direct contradiction.
 task docs for the same human-agent team, each to its own prefix (`aar-*`,
 `adr-*`, `handoff-*`). The Agent Action Record is the default and the point.
 
+## Keep some of it private
+
+Records get committed alongside the code, often in a public repo. When part of a
+run shouldn't be public — a quoted email, an internal name, a customer detail, your
+own private reasoning — wrap it in a private fence:
+
+```
+<!-- private -->
+the part that stays out of the repo
+<!-- /private -->
+```
+
+On save the doc forks in two: the public `docs/aar-*.md` keeps an honest redaction
+stub where the content was, and the full text goes to a gitignored companion at
+`.closedtab/private/aar-*.private.md`. closedtab adds `.closedtab/` to your
+`.gitignore` on the first private write, so the store is never committed. The stub
+still renders — the record is honestly partial — but is inert to `check` and
+`reconcile`. An unclosed fence fails closed: it redacts to the end of the document.
+
+Whole docs can be private too:
+
+```
+closedtab new --private              # route the whole doc to the private store
+closedtab new --type private-note    # a standalone local-only note
+closedtab private list               # what's in the store
+closedtab private read <file>        # print one
+```
+
+The store is plain markdown on your machine — for you, and for a local agent to
+recall — but never public.
+
 ## Let the agent review its own run (MCP)
 
 ```json
 { "mcpServers": { "closedtab": { "command": "closedtab-mcp" } } }
 ```
 
-That gives the agent four tools: `list_templates`, `new_doc`, `check`, and
-`reconcile`. The agent finishes a segment, writes the record of what it just did,
-checks it, and saves it alongside the change.
+That gives the agent tools to write, score, and reconcile its own docs —
+`list_templates`, `new_doc`, `check`, `reconcile` — plus a local-only store it can
+leave private context in for the next agent: `write_private_note`,
+`list_private_notes`, `read_private_note`, and a `private` option on `new_doc` that
+forks out `<!-- private -->` regions. The agent finishes a segment, writes the
+record of what it just did, checks it, and saves it alongside the change. The
+private tools write to the gitignored `.closedtab/private` store; nothing there is
+committed.
 
 ## Library
 
