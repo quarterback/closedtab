@@ -26,6 +26,7 @@ describe("templates", () => {
       "feature",
       "adr",
       "handoff",
+      "private-note",
     ]);
     // The record is first (the default) and renders as a labeled form.
     expect(TEMPLATES[0].id).toBe("record");

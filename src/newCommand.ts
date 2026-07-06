@@ -1,21 +1,40 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, relative } from "node:path";
 import { execSync } from "node:child_process";
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import type { Readable, Writable } from "node:stream";
-import { TEMPLATES, getTemplate, isFielded, type Template } from "./templates.js";
+import {
+  TEMPLATES,
+  getTemplate,
+  isFielded,
+  isPrivateOnly,
+  type Template,
+} from "./templates.js";
 import {
   renderAar,
   docFilename,
   type AarMeta,
   type Answers,
 } from "./renderAar.js";
+import {
+  ensureIgnored,
+  forkPrivate,
+  hasPrivate,
+  privateCompanionPath,
+  privateStoreDir,
+  privateName,
+  uniquePath,
+  wrapPrivate,
+  writePrivateDoc,
+} from "./private.js";
 
 export type NewOptions = {
   type?: string;
   title?: string;
   dir?: string;
+  private?: boolean; // route the whole doc to the gitignored private store
+  root?: string; // repo root for the private store / .gitignore (defaults to cwd)
 };
 
 function todayIso(): string {
@@ -90,24 +109,13 @@ async function ask(
   return ans || fallback;
 }
 
-function resolveDir(optDir?: string): string {
+export function resolveDir(optDir?: string): string {
   if (optDir) {
     mkdirSync(optDir, { recursive: true });
     return optDir;
   }
   if (existsSync("docs") && statSync("docs").isDirectory()) return "docs";
   return ".";
-}
-
-/** Pick a non-colliding path (aar-x.md, aar-x-2.md, ...). */
-function uniquePath(dir: string, base: string): string {
-  let candidate = join(dir, base);
-  if (!existsSync(candidate)) return candidate;
-  const stem = base.replace(/\.md$/, "");
-  for (let n = 2; ; n++) {
-    candidate = join(dir, `${stem}-${n}.md`);
-    if (!existsSync(candidate)) return candidate;
-  }
 }
 
 /**
@@ -153,17 +161,55 @@ export async function runNew(
         `\nNow the sections. Skip any you don't have yet; a skipped section keeps its guidance as a comment so you can fill it in later.\n`,
       );
       for (const section of template.sections) {
-        answers[section.id] = await readSection(rl, out, section.heading, section.guidance);
+        const answer = await readSection(rl, out, section.heading, section.guidance);
+        // A section marked private in the template is fenced so it forks out.
+        answers[section.id] =
+          section.private && answer ? wrapPrivate(answer) : answer;
       }
     }
 
-    const dir = resolveDir(opts.dir);
-    const path = uniquePath(dir, docFilename(template, title));
-    writeFileSync(path, renderAar(template, meta, answers), "utf8");
+    const markdown = renderAar(template, meta, answers);
+    const root = opts.root ?? process.cwd();
 
-    out.write(`\n✓ Wrote ${path}\n`);
+    // Private by kind (the private note) or by flag (--private): the whole doc
+    // goes to the gitignored store, no public doc is written.
+    if (opts.private || isPrivateOnly(template)) {
+      const path = writePrivateDoc(
+        markdown,
+        privateName(docFilename(template, title)),
+        root,
+      );
+      out.write(`\n✓ Wrote ${path}\n`);
+      out.write(`  Private — kept in the gitignored .closedtab/private store, never committed.\n`);
+      return path;
+    }
+
+    const dir = resolveDir(opts.dir);
+    const publicPath = uniquePath(dir, docFilename(template, title));
+
+    // Inline <!-- private --> regions fork into a companion; otherwise write as-is.
+    if (hasPrivate(markdown)) {
+      const storeDir = privateStoreDir(root);
+      mkdirSync(storeDir, { recursive: true });
+      ensureIgnored(root);
+      const privatePath = uniquePath(storeDir, privateName(basename(publicPath)));
+      const fork = forkPrivate(markdown, {
+        publicRef: relative(root, publicPath) || basename(publicPath),
+        privateRef: relative(root, privatePath) || basename(privatePath),
+        title,
+        date: meta.date,
+      });
+      writeFileSync(publicPath, fork.public, "utf8");
+      writeFileSync(privatePath, fork.private!, "utf8");
+      out.write(`\n✓ Wrote ${publicPath}\n`);
+      out.write(`  + private companion ${privatePath} (gitignored, never committed)\n`);
+      return publicPath;
+    }
+
+    writeFileSync(publicPath, markdown, "utf8");
+    out.write(`\n✓ Wrote ${publicPath}\n`);
     out.write(`  Open it, fill it in, and keep it alongside the work. Read records across runs: the Deviation and Change sections tell you the most over time.\n`);
-    return path;
+    return publicPath;
   } finally {
     rl.close();
   }

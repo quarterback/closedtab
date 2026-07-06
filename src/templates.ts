@@ -14,6 +14,7 @@ export type Field = {
   id: string;
   label: string;
   hint?: string; // shown as an HTML comment when the field is blank
+  private?: boolean; // authored content is wrapped in a private fence and forked out
 };
 
 export type SectionSpec = {
@@ -21,6 +22,7 @@ export type SectionSpec = {
   heading: string;
   guidance: string; // prompt for prose sections; summary for fielded sections
   fields?: Field[]; // when present, the section renders as a labeled form
+  private?: boolean; // authored content is wrapped in a private fence and forked out
 };
 
 // A header field, auto-filled from date/title or left blank for the reviewer.
@@ -252,10 +254,44 @@ const TASK_TEMPLATES: Template[] = [
   },
 ];
 
-export const TEMPLATES: Template[] = [RECORD, ...TASK_TEMPLATES];
+// ---- Private note (local-only; never committed) ----
+//
+// A standalone doc that lives only in the gitignored private store: rationale
+// scrubbed from the public record, sensitive context, or a handoff meant for the
+// next agent but not for the repo. Distinct from the redaction fence, which forks
+// part of an otherwise-public record; this is a whole doc that is private by kind.
+
+const PRIVATE_NOTE: Template = {
+  id: "private-note",
+  label: "Private note",
+  description: "A local-only note for the private store — never committed.",
+  docLabel: "Private note",
+  filePrefix: "note",
+  sections: [
+    { id: "context", heading: "Context", guidance: "What this note is about." },
+    {
+      id: "detail",
+      heading: "Detail",
+      guidance:
+        "The private content: rationale scrubbed from the public docs, sensitive context, or cross-agent handoff.",
+    },
+    {
+      id: "for_agents",
+      heading: "For the next agent",
+      guidance: "What a downstream agent should know or do with this.",
+    },
+  ],
+};
+
+export const TEMPLATES: Template[] = [RECORD, ...TASK_TEMPLATES, PRIVATE_NOTE];
 
 export function getTemplate(id: string): Template | undefined {
   return TEMPLATES.find((t) => t.id === id);
+}
+
+/** True for a template whose docs are private by kind (the private note). */
+export function isPrivateOnly(template: Template): boolean {
+  return template.id === "private-note";
 }
 
 /** True when a template renders as a labeled form (the Agent Action Record). */

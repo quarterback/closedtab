@@ -9,10 +9,28 @@ export { extractEntities } from "./entities.js";
 export { classifyHeading } from "./anchors.js";
 
 // Doc authoring (the Agent Action Record + task variants)
-export { TEMPLATES, getTemplate, isFielded } from "./templates.js";
+export { TEMPLATES, getTemplate, isFielded, isPrivateOnly } from "./templates.js";
 export type { Template, SectionSpec, Field, MetaField } from "./templates.js";
 export { renderAar, slugify, docFilename, aarFilename } from "./renderAar.js";
 export type { AarMeta, Answers } from "./renderAar.js";
+
+// Private context (gitignored companion + local recall)
+export {
+  forkPrivate,
+  hasPrivate,
+  wrapPrivate,
+  redactionStub,
+  ensureIgnored,
+  privateStoreDir,
+  privateCompanionPath,
+  privateName,
+  resolveInStore,
+  writePrivateDoc,
+  writePrivateNote,
+  listPrivateNotes,
+  readPrivateNote,
+} from "./private.js";
+export type { ForkResult, PrivateRegion, PrivateListing } from "./private.js";
 export { GUIDE } from "./guide.js";
 export { checkDoc, formatCheck } from "./check.js";
 export type { CheckResult, QualityDimension } from "./check.js";

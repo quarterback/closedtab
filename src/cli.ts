@@ -4,6 +4,7 @@ import { reconcileText } from "./index.js";
 import { runNew } from "./newCommand.js";
 import { GUIDE } from "./guide.js";
 import { checkDoc, formatCheck } from "./check.js";
+import { listPrivateNotes, readPrivateNote } from "./private.js";
 
 // Thin CLI over the closedtab core, for human-agent teams:
 //
@@ -42,10 +43,17 @@ function parseArgs(argv: string[]): { command: string; args: Args } {
 const USAGE = `closedtab: review the work your AI agents do  (alias: oi)
 
 Usage:
-  closedtab new [title] [--type record|bugfix|feature|adr|handoff] [--dir docs]
+  closedtab new [title] [--type record|bugfix|feature|adr|handoff|private-note] [--dir docs] [--private]
       Scaffold an Agent Action Record (the default) to fill in, or a task doc.
       The record runs the six-part review: Intent, Action, Judgment, Deviation,
       Consequence, Change.
+      --private writes the whole doc to the gitignored .closedtab/private store.
+      Inline <!-- private -->...<!-- /private --> regions in any doc fork into a
+      private companion, leaving an honest redaction stub in the public doc.
+
+  closedtab private list
+  closedtab private read <filename>
+      List or print notes in the local .closedtab/private store (never committed).
 
   closedtab guide
       Print a short how-to on the review and why it pays off.
@@ -100,6 +108,36 @@ function reconcileCommand(args: Args): number {
   return 0;
 }
 
+function privateCommand(args: Args): number {
+  const sub = args._[0];
+  if (sub === "list") {
+    const notes = listPrivateNotes();
+    if (notes.length === 0) {
+      console.log("closedtab: no private notes in .closedtab/private");
+      return 0;
+    }
+    for (const n of notes) console.log(`${n.kind === "note" ? "note     " : "companion"}  ${n.filename}  ${n.title}`);
+    return 0;
+  }
+  if (sub === "read") {
+    const filename = args._[1];
+    if (typeof filename !== "string") {
+      console.error("closedtab private read: pass a filename (see `closedtab private list`).");
+      return 2;
+    }
+    try {
+      process.stdout.write(readPrivateNote(filename));
+    } catch (e) {
+      console.error(`closedtab: ${(e as Error).message}`);
+      return 2;
+    }
+    return 0;
+  }
+  console.error("closedtab private: expected `list` or `read <filename>`.\n");
+  console.error(USAGE);
+  return 2;
+}
+
 async function main(): Promise<number> {
   const { command, args } = parseArgs(process.argv.slice(2));
 
@@ -115,9 +153,12 @@ async function main(): Promise<number> {
         type: typeof args.type === "string" ? args.type : undefined,
         title: typeof title === "string" ? title : undefined,
         dir: typeof args.dir === "string" ? args.dir : undefined,
+        private: args.private === true,
       });
       return 0;
     }
+    case "private":
+      return privateCommand(args);
     case "guide":
       console.log(GUIDE);
       return 0;
