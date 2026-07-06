@@ -1,6 +1,6 @@
 {
   "name": "closedtab",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Review the work your AI agents do. Scaffold an Agent Action Record (Intent, Action, Judgment, Deviation, Consequence, Change), score it, and reconcile it against a trace of what the agent actually did. CLI + MCP.",
   "type": "module",
   "license": "MIT",
