@@ -1,6 +1,7 @@
 # closedtab: a shared record for human-agent teams
 
-[![skills.sh](https://skills.sh/b/quarterback/closedtab)](https://skills.sh/quarterback/closedtab)
+[![npm](https://img.shields.io/npm/v/closedtab)](https://www.npmjs.com/package/closedtab)
+[![skills.sh](https://img.shields.io/badge/skills.sh-closedtab-black)](https://skills.sh/quarterback/closedtab)
 
 You move fast with AI agents and ship a lot, and the reasoning behind a decision
 evaporates almost immediately. You knew what you wanted and how you wanted it;
