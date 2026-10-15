@@ -1,5 +1,7 @@
 # closedtab: a shared record for human-agent teams
 
+[![skills.sh](https://skills.sh/b/quarterback/closedtab)](https://skills.sh/quarterback/closedtab)
+
 You move fast with AI agents and ship a lot, and the reasoning behind a decision
 evaporates almost immediately. You knew what you wanted and how you wanted it;
 the agent took a different path; and a week later, mid-debug, you are trying to
@@ -16,6 +18,13 @@ records add up into a history of how the project actually got built.
 
 ```
 npm install -g closedtab
+```
+
+Or add it to your coding agent as a skill ([skills.sh](https://skills.sh/quarterback/closedtab)),
+so it writes a record at the end of each segment of work:
+
+```
+npx skills add quarterback/closedtab
 ```
 
 **New here?** [`GETTING-STARTED.md`](./GETTING-STARTED.md) is a from-zero
