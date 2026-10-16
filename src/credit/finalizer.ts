@@ -108,7 +108,12 @@ export function finalizeCreditSession(
   domain.stats.consecutive_successes = options.outcome === "accepted" && delta !== null
     ? domain.stats.consecutive_successes + 1
     : 0;
-  domain.permission_tier = effectiveTier(domain);
+  // Asymmetric underwriting: contract automatically on deterioration. Never
+  // expand after improvement, even if the consumer previously allowed a higher
+  // ceiling. Restoration requires a fresh explicit grant.
+  domain.permission_tier = Math.min(
+    domain.permission_tier, effectiveTier(domain),
+  ) as typeof domain.permission_tier;
   const timestamp = new Date().toISOString();
   const aar: CreditAar = {
     aar_id: `aar_${timestamp.replace(/[-:.TZ]/g, "")}_${randomUUID()}`,
