@@ -126,6 +126,19 @@ record of what it just did, checks it, and saves it alongside the change. The
 private tools write to the gitignored `.closedtab/private` store; nothing there is
 committed.
 
+## Experimental: consumer-issued agent credit
+
+CT-ACE adds a local credit record for the **AI product** (Claude, Gemini, etc.),
+scored by task domain, with a separate consumer-authorized delegation ceiling.
+Observed failures can automatically restrict that ceiling. Score recovery
+never expands authority without a fresh human grant.
+
+The prototype adds `closedtab credit init`, `show`, `grant`, `passport`,
+`check`, and `close`, plus a TypeScript tool guard for host integration.
+It does **not** intercept unrelated AI tools, and it does not execute payments.
+
+See [the CT-ACE specification and prototype instructions](./docs/CT-ACE.md).
+
 ## Library
 
 ```javascript

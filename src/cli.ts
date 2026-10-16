@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
+import { runCreditCommand } from "./creditCli.js";
 import { reconcileText } from "./index.js";
 import { runNew } from "./newCommand.js";
 import { GUIDE } from "./guide.js";
@@ -63,6 +64,9 @@ Usage:
 
   closedtab reconcile --testimony <file.md> --trace <file.jsonl|file.json> [--out <diff.json>]
       Line a record up against a machine trace of what the agent actually did.
+
+  closedtab credit help
+      Consumer-owned agent credit: local ratings, grants, passport, guard checks, and session closure.
 
   -h, --help    Show this help.`;
 
@@ -159,6 +163,8 @@ async function main(): Promise<number> {
     }
     case "private":
       return privateCommand(args);
+    case "credit":
+      return runCreditCommand(args);
     case "guide":
       console.log(GUIDE);
       return 0;

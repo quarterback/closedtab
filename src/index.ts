@@ -53,3 +53,11 @@ export function reconcileText(
   const trace = parseTrace(traceText);
   return reconcile(claims, trace);
 }
+
+// CT-ACE: consumer-owned scoring, explicit delegation limits, and host-side guard.
+export * from "./credit/types.js";
+export * from "./credit/store.js";
+export * from "./credit/policy.js";
+export * from "./credit/passport.js";
+export * from "./credit/guard.js";
+export * from "./credit/finalizer.js";
