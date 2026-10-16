@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, lstatSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emptyReport, ensureDomain, getDomain, initializeCreditReport, readCreditReport } from "../src/credit/store.js";
+import { emptyReport, ensureDomain, getDomain, initializeCreditReport, readCreditReport, writeCreditReport } from "../src/credit/store.js";
 import { setConsumerGrant } from "../src/credit/policy.js";
 import { interactionDelta, nextVeracityScore, finalizeCreditSession } from "../src/credit/finalizer.js";
 import { effectiveTier, scoreTier } from "../src/credit/types.js";
@@ -49,6 +49,7 @@ describe("consumer-owned credit", () => {
     const domain = ensureDomain(emptyReport(), CLAUDE);
     domain.veracity_score = 9.2;
     domain.user_max_tier = 1;
+    domain.permission_tier = 1;
     expect(scoreTier(domain.veracity_score)).toBe(3);
     expect(effectiveTier(domain)).toBe(1);
     expect(() => validateToolExecution(domain, { action: "edit_file", target: "src/app.ts" })).toThrow(CreditViolationError);
@@ -57,10 +58,36 @@ describe("consumer-owned credit", () => {
     const domain = ensureDomain(emptyReport(), CLAUDE);
     domain.veracity_score = 7.5;
     domain.user_max_tier = 2;
+    domain.permission_tier = 2;
     expect(() => validateToolExecution(domain, { action: "unknown_action" })).toThrow(/Unknown tool/);
     expect(() => validateToolExecution(domain, { action: "schedule_invite" })).toThrow(/explicit/);
     domain.credit_limit.allowed_actions = ["schedule_invite"];
     expect(validateToolExecution(domain, { action: "schedule_invite" })).toBe(2);
+  });
+  it("automatically contracts, but never automatically restores, permission after scoring", () => {
+    const { vault } = temp();
+    const id = CLAUDE;
+    // Preexisting consumer approval at a high-performing level.
+    const report = emptyReport();
+    const approved = ensureDomain(report, id);
+    approved.veracity_score = 9.0;
+    approved.user_max_tier = 3;
+    approved.permission_tier = 3;
+    writeCreditReport(report, vault);
+    // Poor observed result moves score 9.0 -> 7.2, contracting from 3 to 2.
+    finalizeCreditSession({ ...id, outcome: "rejected" }, vault);
+    expect(getDomain(readCreditReport(vault), id).permission_tier).toBe(2);
+    // Scores can recover, but authority remains at 2 until the consumer signs off.
+    for (let i = 0; i < 8; i++) {
+      finalizeCreditSession({
+        ...id, outcome: "accepted", agentDraft: "abc", userFinal: "abc",
+      }, vault);
+    }
+    const recovered = getDomain(readCreditReport(vault), id);
+    expect(scoreTier(recovered.veracity_score)).toBe(3);
+    expect(effectiveTier(recovered)).toBe(2);
+    setConsumerGrant(id, { maxTier: 3 }, vault);
+    expect(effectiveTier(getDomain(readCreditReport(vault), id))).toBe(3);
   });
   it("does not give the agent the private AAR ledger", () => {
     const { vault } = temp();
