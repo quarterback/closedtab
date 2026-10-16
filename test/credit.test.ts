@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, lstatSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, lstatSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emptyReport, ensureDomain, getDomain, initializeCreditReport, readCreditReport, writeCreditReport } from "../src/credit/store.js";
@@ -30,6 +30,21 @@ describe("consumer-owned credit", () => {
     setConsumerGrant(CLAUDE, { maxTier: 2, allowedPaths: ["src/**"] }, vault);
     expect(getDomain(readCreditReport(vault), CLAUDE).user_max_tier).toBe(2);
     expect(getDomain(readCreditReport(vault), { productId: "google/gemini", domain: "code-refactoring" }).user_max_tier).toBe(0);
+  });
+  it("fails closed on corrupted numeric tiers instead of treating NaN as permission", () => {
+    const { vault } = temp();
+    const path = initializeCreditReport(vault);
+    const data = readCreditReport(vault);
+    const d = ensureDomain(data, CLAUDE);
+    d.veracity_score = 8;
+    d.permission_tier = 2;
+    d.user_max_tier = 2;
+    writeCreditReport(data, vault);
+    const malformed = JSON.parse(readFileSync(path, "utf8"));
+    malformed.products[CLAUDE.productId].domains[CLAUDE.domain].permission_tier = "invalid";
+    writeFileSync(path, JSON.stringify(malformed));
+    expect(() => readCreditReport(vault)).toThrow(/Invalid CT-ACE/);
+    expect(() => generateCreditPassport(CLAUDE, vault)).toThrow(/Invalid CT-ACE/);
   });
   it("uses EMA and does not rate an unreviewed closure as accepted", () => {
     expect(nextVeracityScore(5, 1)).toBe(6);
