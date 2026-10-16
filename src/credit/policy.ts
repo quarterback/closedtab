@@ -33,7 +33,9 @@ export function setConsumerGrant(identity: CreditIdentity, grant: ConsumerGrant,
     domain.credit_limit.blocked_actions = [...new Set(grant.blockedActions)];
   if (grant.financialCapUsd !== undefined)
     domain.credit_limit.financial_cap_usd = grant.financialCapUsd;
-  domain.permission_tier = effectiveTier(domain);
+  // This API is the explicit consumer authorization event. It can restore a
+  // previously reduced tier, but never exceed current demonstrated eligibility.
+  domain.permission_tier = Math.min(scoreTier(domain.veracity_score), grant.maxTier) as PermissionTier;
   writeCreditReport(report, vault);
   return domain;
 }
