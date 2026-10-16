@@ -63,8 +63,16 @@ export function scoreTier(score: number): PermissionTier {
   if (score >= 4) return 1;
   return 0;
 }
+/**
+ * Credit deterioration contracts the live grant immediately. A later score
+ * recovery never reinstates authority; only a consumer grant may raise it.
+ */
 export function effectiveTier(record: DomainCredit): PermissionTier {
-  return Math.min(scoreTier(record.veracity_score), record.user_max_tier) as PermissionTier;
+  return Math.min(
+    scoreTier(record.veracity_score),
+    record.user_max_tier,
+    record.permission_tier,
+  ) as PermissionTier;
 }
 export function newDomain(): DomainCredit {
   return {
