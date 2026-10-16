@@ -28,9 +28,12 @@ node dist/cli.js credit close --product anthropic/claude --domain code-refactori
 
 The `check` command only determines whether a call would be allowed. It
 never executes the action. `grant` is an explicit consumer operation; score
-increases cannot exceed its `user_max_tier`. Set the cap back to zero to
-revoke previously delegated authority. Defaults: ceiling zero, no allowed
-paths, no remote actions and no payment allowance.
+increases cannot exceed its `user_max_tier`. Scores falling below a tier
+threshold *automatically contract* the active `permission_tier`. A recovered
+score cannot restore an old tier; the consumer must run `grant` again (even
+when reauthorizing the same ceiling). Set the cap back to zero to revoke
+previously delegated authority. Defaults: ceiling zero, no allowed paths, no
+remote actions and no payment allowance.
 
 ## Host integration
 
