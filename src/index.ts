@@ -61,3 +61,5 @@ export * from "./credit/policy.js";
 export * from "./credit/passport.js";
 export * from "./credit/guard.js";
 export * from "./credit/finalizer.js";
+export * from "./credit/engine.js";
+export * from "./credit/report.js";
