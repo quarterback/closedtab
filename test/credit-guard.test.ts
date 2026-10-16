@@ -21,7 +21,6 @@ describe("tool enforcement", () => {
     const record = ensureDomain(emptyReport(), id);
     record.veracity_score = 8;
     record.user_max_tier = 2;
-    d.permission_tier = 2;
     record.permission_tier = 2;
     record.credit_limit.allowed_paths = ["src/**"];
     expect(validateToolExecution(record, { action: "write_file", target: "src/a.ts" }, { root })).toBe(2);
