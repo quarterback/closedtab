@@ -21,6 +21,8 @@ describe("tool enforcement", () => {
     const record = ensureDomain(emptyReport(), id);
     record.veracity_score = 8;
     record.user_max_tier = 2;
+    d.permission_tier = 2;
+    record.permission_tier = 2;
     record.credit_limit.allowed_paths = ["src/**"];
     expect(validateToolExecution(record, { action: "write_file", target: "src/a.ts" }, { root })).toBe(2);
     expect(() => validateToolExecution(record, { action: "write_file", target: "../a.ts" }, { root })).toThrow();
@@ -35,6 +37,7 @@ describe("tool enforcement", () => {
     const d = ensureDomain(emptyReport(), id);
     d.veracity_score = 8;
     d.user_max_tier = 2;
+    d.permission_tier = 2;
     d.credit_limit.allowed_paths = ["src/**"];
     expect(() => validateToolExecution(d, { action: "write_file", target: "src/jump/data" }, { root })).toThrow();
   });
@@ -42,7 +45,7 @@ describe("tool enforcement", () => {
     const { root, vault } = tmp();
     const report = emptyReport();
     const d = ensureDomain(report, id);
-    d.veracity_score = 9; d.user_max_tier = 3;
+    d.veracity_score = 9; d.user_max_tier = 3; d.permission_tier = 3;
     d.credit_limit.allowed_actions = ["execute_payment"];
     d.credit_limit.financial_cap_usd = 19;
     writeCreditReport(report, vault);
