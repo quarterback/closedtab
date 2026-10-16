@@ -1,5 +1,5 @@
 import { ensureDomain, readCreditReport, writeCreditReport, creditVaultDir } from "./store.js";
-import { effectiveTier, type CreditIdentity, type PermissionTier } from "./types.js";
+import { scoreTier, type CreditIdentity, type PermissionTier } from "./types.js";
 
 export interface ConsumerGrant {
   maxTier: PermissionTier;
