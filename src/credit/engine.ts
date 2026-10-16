@@ -240,6 +240,7 @@ export function foldDomain(events: CreditEvent[], trace?: TraceEntry[]): DomainC
         case "dispute":
           d.stats.disputes++;
           d.permission_tier = Math.min(d.permission_tier, e.tier_cap) as PermissionTier;
+          for (const action of e.held_actions) if (!d.held_actions.includes(action)) d.held_actions.push(action);
           break;
       }
     }

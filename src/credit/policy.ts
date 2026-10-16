@@ -143,6 +143,7 @@ export function disputeCreditEvent(
       product_id: target.product_id, domain: target.domain,
       type: "dispute", event_id: eventId, reason: reason.trim().slice(0, 2000),
       tier_cap: before.permission_tier,
+      held_actions: [...before.held_actions],
     }];
   });
   return { product_id: identity!.productId, domain: identity!.domain, before: before!, after: getDomain(report, identity!) };

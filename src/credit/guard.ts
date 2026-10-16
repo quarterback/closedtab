@@ -157,11 +157,15 @@ export class CreditGuardedSession {
       return validateToolExecution(domain, attempt, { root: this.opts.root, vault, spentUsd: this.spentUsd });
     } catch (e) {
       if (e instanceof CreditViolationError && e.code === "blocked" && this.opts.recordTilts !== false) {
-        commitCreditEvents(vault, (current) => [{
-          id: newEventId(current), at: new Date().toISOString(),
-          product_id: this.identity.productId, domain: this.identity.domain,
-          type: "blocked_attempt", action: attempt.action.slice(0, 200),
-        }]);
+        try {
+          commitCreditEvents(vault, (current) => [{
+            id: newEventId(current), at: new Date().toISOString(),
+            product_id: this.identity.productId, domain: this.identity.domain,
+            type: "blocked_attempt", action: attempt.action.slice(0, 200),
+          }]);
+        } catch {
+          // The refusal stands even if the tilt could not be written.
+        }
       }
       throw e;
     }

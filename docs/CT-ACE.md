@@ -197,8 +197,8 @@ pushed to Git.
 
 A dispute sets one session, settled action or blocked attempt aside and
 recomputes the score from the rest. A dispute can lower authority (if the
-recomputed score no longer supports a tier) and never raises it; grant again
-for that. A grant records the tier it produced when it was made, and a later
+recomputed score no longer supports a tier), and it never raises a tier or
+releases a held action; grant again for that. A grant records the tier it produced when it was made, and a later
 replay never exceeds it.
 
 A ledger from the first prototype (format 1.0.0, scored 0 to 10) is read as one

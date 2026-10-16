@@ -127,6 +127,8 @@ export type DisputeEvent = EventBase & {
   reason: string;
   /** The active tier when the dispute was filed. A dispute never raises authority. */
   tier_cap: PermissionTier;
+  /** Actions held when the dispute was filed. A dispute never releases them; a grant does. */
+  held_actions: string[];
 };
 export type CreditEvent =
   | BaselineEvent | SessionClosedEvent | ActionSettledEvent | GrantEvent
@@ -347,6 +349,7 @@ export function assertValidEvent(input: unknown): asserts input is CreditEvent {
       if (typeof e.event_id !== "string" || !EVENT_ID.test(e.event_id)) bad("event_id");
       str("reason");
       if (!isTier(e.tier_cap)) bad("tier_cap");
+      if (!isStringArray(e.held_actions)) bad("held_actions");
       break;
     default:
       bad("unknown type");

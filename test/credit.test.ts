@@ -273,6 +273,16 @@ describe("disputes", () => {
     expect(() => disputeCreditEvent(grantId, "no", vault)).toThrow(/Only sessions/);
     expect(() => disputeCreditEvent("ev_ffffffffff", "no", vault)).toThrow(/No event/);
   });
+  it("never releases a held action", () => {
+    const { vault } = temp();
+    seed(vault, { score: 530, permission_tier: 2, user_max_tier: 2, stats: { reviewed_sessions: 12, total_sessions: 12 } });
+    setConsumerGrant(CLAUDE, { maxTier: 2, minScores: { edit_file: 520 } }, vault);
+    const rejected = finalizeCreditSession({ ...CLAUDE, outcome: "rejected" }, vault);
+    expect(domainOf(vault).held_actions).toEqual(["edit_file"]);
+    const r = disputeCreditEvent(rejected.event_id, "wrong draft", vault);
+    expect(r.after.score).toBe(530);
+    expect(r.after.held_actions).toEqual(["edit_file"]);
+  });
   it("replays never exceed the tier a grant produced when it was made", () => {
     const { vault } = temp();
     for (let i = 0; i < 10; i++) accept(vault);
