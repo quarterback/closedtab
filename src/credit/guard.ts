@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep, dirname } from "node:path";
 import { creditVaultDir, getDomain, readCreditReport } from "./store.js";
-import { effectiveTier, type CreditIdentity, type DomainCredit, type PermissionTier, type ToolAttempt } from "./types.js";
+import { assertValidDomain, effectiveTier, type CreditIdentity, type DomainCredit, type PermissionTier, type ToolAttempt } from "./types.js";
 
 /**
  * A host must execute tools exclusively through this guard to enforce policy.
@@ -59,7 +59,9 @@ function globRegex(pattern: string): RegExp {
   }
   return new RegExp(s + "$");
 }
-export function checkAllowedPath(target: string, patterns: string[], root = process.cwd()): boolean {
+export function checkAllowedPath(
+  target: string, patterns: string[], root = process.cwd(), vault = creditVaultDir(),
+): boolean {
   if (!target || patterns.length === 0) return false;
   const projectRoot = realpathSync(resolve(root));
   const absolute = resolve(projectRoot, target);
@@ -67,13 +69,14 @@ export function checkAllowedPath(target: string, patterns: string[], root = proc
   if (!inside(projectRoot, absolute)) return false;
   const resolved = canonicalExistingAncestor(absolute);
   if (!inside(projectRoot, resolved)) return false;
-  const vault = resolve(creditVaultDir());
-  if (inside(vault, resolved) || inside(vault, absolute)) return false;
+  const privateVault = resolve(vault);
+  if (inside(privateVault, resolved) || inside(privateVault, absolute)) return false;
   const rel = relative(projectRoot, resolved).split(sep).join("/");
   return patterns.some((pattern) => globRegex(pattern).test(rel));
 }
 export interface GuardContext {
   root?: string;
+  vault?: string;
   spentUsd?: number;
 }
 export function validateToolExecution(
@@ -81,7 +84,8 @@ export function validateToolExecution(
   attempt: ToolAttempt,
   context: GuardContext = {},
 ): PermissionTier {
-  const required = REQUIRED_TIER[attempt.action];
+  assertValidDomain(record);
+  const required = Object.hasOwn(REQUIRED_TIER, attempt.action) ? REQUIRED_TIER[attempt.action] : undefined;
   if (required === undefined) throw new CreditViolationError(`Unknown tool action "${attempt.action}" (fail closed)`);
   const tier = effectiveTier(record);
   if (record.credit_limit.blocked_actions.includes("*") ||
@@ -95,7 +99,7 @@ export function validateToolExecution(
     throw new CreditViolationError(`Action "${attempt.action}" requires explicit consumer authorization`);
   }
   if (FILE_ACTIONS.has(attempt.action)) {
-    if (!attempt.target || !checkAllowedPath(attempt.target, record.credit_limit.allowed_paths, context.root)) {
+    if (!attempt.target || !checkAllowedPath(attempt.target, record.credit_limit.allowed_paths, context.root, context.vault)) {
       throw new CreditViolationError(`File path not authorized for "${attempt.action}"`);
     }
   }
@@ -123,7 +127,7 @@ export class CreditGuardedSession {
   ) {}
   verify(attempt: ToolAttempt): PermissionTier {
     const domain = getDomain(readCreditReport(this.opts.vault), this.identity);
-    return validateToolExecution(domain, attempt, { root: this.opts.root, spentUsd: this.spentUsd });
+    return validateToolExecution(domain, attempt, { root: this.opts.root, vault: this.opts.vault, spentUsd: this.spentUsd });
   }
   async execute<T>(attempt: ToolAttempt, handler: () => Promise<T> | T): Promise<T> {
     this.verify(attempt);
