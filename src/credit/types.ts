@@ -101,3 +101,37 @@ export function validateIdentity({ productId, domain }: CreditIdentity): void {
     throw new Error("Product and domain must be simple identifiers (e.g. anthropic/claude, code-refactoring).");
   }
 }
+
+/** Validate persisted policy before relying on it as an execution boundary. */
+export function assertValidDomain(input: unknown): asserts input is DomainCredit {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Invalid CT-ACE domain credit record");
+  }
+  const record = input as DomainCredit;
+  const validTier = (tier: unknown) => Number.isInteger(tier) &&
+    typeof tier === "number" && tier >= 0 && tier <= 3;
+  const validCount = (count: unknown) => Number.isSafeInteger(count) &&
+    typeof count === "number" && count >= 0;
+  if (!Number.isFinite(record.veracity_score) ||
+      record.veracity_score < 0 || record.veracity_score > 10 ||
+      !validTier(record.permission_tier) || !validTier(record.user_max_tier)) {
+    throw new Error("Invalid CT-ACE score or permission tier");
+  }
+  const limit = record.credit_limit;
+  if (!limit || typeof limit !== "object" || Array.isArray(limit) ||
+      !Number.isFinite(limit.financial_cap_usd) || limit.financial_cap_usd < 0 ||
+      ![limit.allowed_paths, limit.allowed_actions, limit.blocked_actions]
+        .every((xs) => Array.isArray(xs) && xs.every((s) => typeof s === "string"))) {
+    throw new Error("Invalid CT-ACE authorization limits");
+  }
+  const s = record.stats;
+  if (!s || typeof s !== "object" || Array.isArray(s) ||
+      !validCount(s.total_sessions) || !validCount(s.reviewed_sessions) ||
+      !validCount(s.untouched_acceptances) || !validCount(s.consecutive_successes) ||
+      !Number.isFinite(s.untouched_acceptance_rate) ||
+      s.untouched_acceptance_rate < 0 || s.untouched_acceptance_rate > 1 ||
+      s.reviewed_sessions > s.total_sessions ||
+      s.untouched_acceptances > s.reviewed_sessions) {
+    throw new Error("Invalid CT-ACE session statistics");
+  }
+}
