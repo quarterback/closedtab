@@ -126,18 +126,27 @@ record of what it just did, checks it, and saves it alongside the change. The
 private tools write to the gitignored `.closedtab/private` store; nothing there is
 committed.
 
-## Experimental: consumer-issued agent credit
+## Experimental: agent credit
 
-CT-ACE adds a local credit record for the **AI product** (Claude, Gemini, etc.),
-scored by task domain, with a separate consumer-authorized delegation ceiling.
-Observed failures can automatically restrict that ceiling. Score recovery
-never expands authority without a fresh human grant.
+CT-ACE keeps a credit record on your device for each **AI product** you use
+(Claude, Gemini and so on), scored by task on a 100 to 600 range. The record
+decides how much authority that product's agents get. A falling score cuts
+authority on its own; only your grant raises it, after enough history, and a
+grant to the top tier waits a day. Agents read their limits and never their
+score.
 
-The prototype adds `closedtab credit init`, `show`, `grant`, `passport`,
-`check`, and `close`, plus a TypeScript tool guard for host integration.
-It does **not** intercept unrelated AI tools, and it does not execute payments.
+```sh
+closedtab credit grant --product anthropic/claude --domain code-refactoring --max-tier 1 --paths 'src/**'
+closedtab credit close --product anthropic/claude --domain code-refactoring --outcome accepted --draft agent.txt --final mine.txt
+closedtab credit report
+```
 
-See [the CT-ACE specification and prototype instructions](./docs/CT-ACE.md).
+The commands are `init`, `show`, `passport`, `grant`, `check`, `close`,
+`settle`, `dispute`, `events` and `report`, plus a TypeScript guard for agent
+hosts. `credit report` writes a printable credit report, one page per product.
+Run `bash examples/ct-ace/demo.sh` after a build to see one.
+
+See [the CT-ACE guide](./docs/CT-ACE.md).
 
 ## Library
 

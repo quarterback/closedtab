@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { commitCreditEvents, creditVaultDir, ensureVault, getDomain, ledgerPath, newEventId } from "./store.js";
 import {
-  creditVaultDir, ensureDomain, ensureVault, readCreditReport, writeCreditReport,
-} from "./store.js";
-import {
-  effectiveTier, type CreditAar, type CreditIdentity, type SessionOutcome,
+  EVIDENCE_LEVELS, grantAvailable, validateIdentity,
+  type ActionSettledEvent, type CreditAar, type CreditIdentity, type DomainCredit,
+  type EvidenceLevel, type PermissionTier, type SessionClosedEvent, type SessionOutcome,
 } from "./types.js";
 
 export interface FinalizeOptions extends CreditIdentity {
@@ -14,12 +14,15 @@ export interface FinalizeOptions extends CreditIdentity {
   summary?: string;
   agentDraft?: string;
   userFinal?: string;
-  alpha?: number;
+  at?: Date;
 }
 export interface FinalizeResult {
   aar: CreditAar;
+  event_id: string;
   score: number;
   tier: number;
+  /** The replay line: a tier the person may now choose to grant. Never applied automatically. */
+  grant_available: PermissionTier | null;
   ledger_path: string;
   aar_path: string;
 }
@@ -71,69 +74,112 @@ export function interactionDelta(
   const delta = ratio < 0.15 ? 0.5 : ratio <= 0.5 ? -0.2 : -0.5;
   return { delta, ratio, untouched: false };
 }
-export function nextVeracityScore(previous: number, delta: number, alpha = 0.20): number {
-  if (!Number.isFinite(previous) || previous < 0 || previous > 10 ||
-      !Number.isFinite(delta) || delta < -1 || delta > 1 ||
-      !Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
-    throw new Error("Score, delta, or decay factor is outside its permitted range");
-  }
-  return Math.round(Math.max(0, Math.min(10,
-    (1 - alpha) * previous + alpha * (5 + 5 * delta),
-  )) * 100) / 100;
+
+function scoreChange(before: DomainCredit, after: DomainCredit): number {
+  return Math.round((after.score - before.score) * 10) / 10;
 }
+
+/** Record a reviewed (or unreviewed) session. Scoring and any automatic contraction happen in the same write. */
 export function finalizeCreditSession(
   options: FinalizeOptions,
   vault = creditVaultDir(),
 ): FinalizeResult {
+  validateIdentity(options);
   if (!["accepted", "rejected", "crashed", "unreviewed"].includes(options.outcome)) {
     throw new Error("Unknown session outcome");
   }
-  const alpha = options.alpha ?? 0.20;
-  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) throw new Error("alpha must be between 0 and 1");
-  const report = readCreditReport(vault);
-  const domain = ensureDomain(report, options);
-  const { delta, ratio, untouched } = interactionDelta(
-    options.outcome, options.agentDraft, options.userFinal,
-  );
-  const previous = domain.veracity_score;
-  if (delta !== null) {
-    domain.veracity_score = nextVeracityScore(previous, delta, alpha);
-    domain.stats.reviewed_sessions++;
-    if (untouched) domain.stats.untouched_acceptances++;
-  }
-  domain.stats.total_sessions++;
-  domain.stats.untouched_acceptance_rate = domain.stats.reviewed_sessions
-    ? Math.round(10000 * domain.stats.untouched_acceptances / domain.stats.reviewed_sessions) / 10000
-    : 0;
-  domain.stats.consecutive_successes = options.outcome === "accepted" && delta !== null
-    ? domain.stats.consecutive_successes + 1
-    : 0;
-  // Asymmetric underwriting: contract automatically on deterioration. Never
-  // expand after improvement, even if the consumer previously allowed a higher
-  // ceiling. Restoration requires a fresh explicit grant.
-  domain.permission_tier = Math.min(
-    domain.permission_tier, effectiveTier(domain),
-  ) as typeof domain.permission_tier;
-  const timestamp = new Date().toISOString();
+  const { delta, ratio } = interactionDelta(options.outcome, options.agentDraft, options.userFinal);
+  const timestamp = (options.at ?? new Date()).toISOString();
+  const aarId = `aar_${timestamp.replace(/[-:.TZ]/g, "")}_${randomUUID()}`;
+  let before: DomainCredit | undefined;
+  let event: SessionClosedEvent | undefined;
+  const report = commitCreditEvents(vault, (current) => {
+    before = getDomain(current, options);
+    event = {
+      id: newEventId(current), at: timestamp,
+      product_id: options.productId, domain: options.domain,
+      type: "session_closed", outcome: options.outcome,
+      delta, edit_ratio: ratio === null ? null : Math.round(ratio * 10000) / 10000,
+      intent: (options.intent ?? "").slice(0, 2000), summary: (options.summary ?? "").slice(0, 2000),
+      aar_id: aarId,
+    };
+    return [event];
+  });
+  const after = getDomain(report, options);
   const aar: CreditAar = {
-    aar_id: `aar_${timestamp.replace(/[-:.TZ]/g, "")}_${randomUUID()}`,
+    aar_id: aarId,
+    event_id: event!.id,
     timestamp,
     product_id: options.productId,
     domain: options.domain,
-    intent: options.intent ?? "",
+    intent: event!.intent,
     outcome: options.outcome,
     interaction_delta: delta,
-    edit_ratio: ratio === null ? null : Math.round(ratio * 10000) / 10000,
-    score_change: Math.round((domain.veracity_score - previous) * 100) / 100,
-    summary: options.summary ?? "",
+    edit_ratio: event!.edit_ratio,
+    score_change: scoreChange(before!, after),
+    score_after: after.score,
+    summary: event!.summary,
   };
-  report.recent_aars.push(aar);
-  report.recent_aars = report.recent_aars.slice(-30);
   const home = ensureVault(vault);
   const aarDir = join(home, "aars");
   mkdirSync(aarDir, { recursive: true, mode: 0o700 });
   const aarPath = join(aarDir, aar.aar_id + ".json");
   writeFileSync(aarPath, JSON.stringify(aar, null, 2) + "\n", { flag: "wx", mode: 0o600 });
-  const ledgerPath = writeCreditReport(report, home);
-  return { aar, score: domain.veracity_score, tier: domain.permission_tier, ledger_path: ledgerPath, aar_path: aarPath };
+  return {
+    aar, event_id: event!.id, score: after.score, tier: after.permission_tier,
+    grant_available: grantAvailable(after), ledger_path: ledgerPath(home), aar_path: aarPath,
+  };
+}
+
+export interface SettleOptions extends CreditIdentity {
+  /** The host's own id for the action, so later evidence can be matched to it. */
+  ref: string;
+  evidence: EvidenceLevel;
+  summary?: string;
+  at?: Date;
+}
+export interface SettleResult {
+  event_id: string;
+  score: number;
+  score_change: number;
+  tier: number;
+  tilt: boolean;
+  grant_available: PermissionTier | null;
+}
+/**
+ * Record how far the proof of an action got, once it settles. One settlement
+ * per action; a contradiction may follow an earlier settlement of the same
+ * action, because evidence against can arrive late.
+ */
+export function settleActionEvidence(options: SettleOptions, vault = creditVaultDir()): SettleResult {
+  validateIdentity(options);
+  const ref = options.ref?.trim() ?? "";
+  if (!ref || ref.length > 200) throw new Error("settle needs a --ref of 1 to 200 characters naming the action");
+  if (!EVIDENCE_LEVELS.includes(options.evidence)) {
+    throw new Error(`evidence must be one of ${EVIDENCE_LEVELS.join(", ")}`);
+  }
+  let before: DomainCredit | undefined;
+  let event: ActionSettledEvent | undefined;
+  const report = commitCreditEvents(vault, (current) => {
+    const earlier = current.events.filter((e) =>
+      e.type === "action_settled" && e.product_id === options.productId &&
+      e.domain === options.domain && e.ref === ref) as ActionSettledEvent[];
+    if (earlier.length && (options.evidence !== "contradicted" || earlier.some((e) => e.evidence === "contradicted"))) {
+      throw new Error(`Action ${ref} has already settled as ${earlier[earlier.length - 1].evidence}. Only a contradiction can follow it.`);
+    }
+    before = getDomain(current, options);
+    event = {
+      id: newEventId(current), at: (options.at ?? new Date()).toISOString(),
+      product_id: options.productId, domain: options.domain,
+      type: "action_settled", ref, evidence: options.evidence,
+      summary: (options.summary ?? "").slice(0, 2000),
+    };
+    return [event];
+  });
+  const after = getDomain(report, options);
+  return {
+    event_id: event!.id, score: after.score, score_change: scoreChange(before!, after),
+    tier: after.permission_tier, tilt: options.evidence === "contradicted",
+    grant_available: grantAvailable(after),
+  };
 }

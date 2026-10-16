@@ -4,3 +4,4 @@ dist/
 .DS_Store
 .vercel/
 .netlify/
+agent-credit-report*.html

@@ -1,50 +1,155 @@
-# ClosedTab Agent Credit Engine (CT-ACE)
+# closedtab Agent Credit Engine (CT-ACE)
 
-CT-ACE is an experimental consumer-side credit layer for AI products. The rating
-unit is the product a person recognizes (e.g. `anthropic/claude`,
-`google/gemini`), not a transient subagent or model version. Each task domain
-has its own performance history. The person sets the delegation ceiling.
+CT-ACE is a credit record you keep on your own device for each AI product you
+use, scored by the kind of task you hand it. The record decides how much
+authority that product's agents get. The rating unit is the product you
+recognize (`anthropic/claude`, `google/gemini`), and each task domain
+(`code-refactoring`, `writing`) has its own history. You set the ceiling;
+the score can lower authority on its own, and only your grant raises it.
 
-The existing closedtab package is an AAR/trace-review CLI, library, and MCP
-server; it is **not** an LLM tool-execution host. CT-ACE therefore provides
-a guard that host runtimes can call. It does not intercept arbitrary existing
-Claude, Gemini, ChatGPT, operating-system, or browser actions.
+closedtab is a record and review tool. It supplies a guard that an agent host
+calls before each tool call; it does not intercept Claude, Gemini, ChatGPT,
+browser or operating system actions on its own.
 
-## Try it locally
+## Try it
 
 ```sh
 npm ci && npm run build
-node dist/cli.js credit init
-node dist/cli.js credit show --product anthropic/claude --domain code-refactoring
-node dist/cli.js credit grant --product anthropic/claude --domain code-refactoring \
-  --max-tier 2 --paths 'src/**,test/**' --allow-actions 'schedule_invite'
-node dist/cli.js credit passport --product anthropic/claude --domain code-refactoring
-node dist/cli.js credit check --product anthropic/claude --domain code-refactoring \
-  --action read_file --target src/index.ts
-node dist/cli.js credit close --product anthropic/claude --domain code-refactoring \
-  --outcome accepted --draft /tmp/agent-output.txt --final /tmp/consumer-edited.txt \
-  --intent 'Refactor the middleware'
+bash examples/ct-ace/demo.sh            # builds a sample record and writes agent-credit-report-sample.html
 ```
 
-The `check` command only determines whether a call would be allowed. It
-never executes the action. `grant` is an explicit consumer operation; score
-increases cannot exceed its `user_max_tier`. Scores falling below a tier
-threshold *automatically contract* the active `permission_tier`. A recovered
-score cannot restore an old tier; the consumer must run `grant` again (even
-when reauthorizing the same ceiling). Set the cap back to zero to revoke
-previously delegated authority. Defaults: ceiling zero, no allowed paths, no
-remote actions and no payment allowance.
+With your own record:
 
-## Host integration
+```sh
+node dist/cli.js credit init
+node dist/cli.js credit grant --product anthropic/claude --domain code-refactoring \
+  --max-tier 1 --paths 'src/**,test/**'
+node dist/cli.js credit passport --product anthropic/claude --domain code-refactoring --reader claude-code
+node dist/cli.js credit close --product anthropic/claude --domain code-refactoring \
+  --outcome accepted --draft /tmp/agent-output.txt --final /tmp/your-final.txt --intent 'Refactor the middleware'
+node dist/cli.js credit show --product anthropic/claude --domain code-refactoring
+node dist/cli.js credit report --out agent-credit-report.html
+```
+
+| Command | What it does |
+| --- | --- |
+| `credit init` | Creates the private vault at `~/.closedtab` (0700) and the ledger (0600). |
+| `credit show` | Your view of one domain: score, band, tiers, limits, and what you could grant next. |
+| `credit passport` | The agent's view: its limits only. Each read is recorded as an inquiry. |
+| `credit grant` | Sets the ceiling and limits. The only command that raises authority. |
+| `credit grant --confirm` | The second confirmation a tier 3 grant needs, 24 hours after it was asked for. |
+| `credit check` | A dry run of the guard. It never performs the action. |
+| `credit close` | Scores a reviewed session from the agent's draft and your final version. |
+| `credit settle` | Scores an action in the world once its proof settles. |
+| `credit dispute` | Sets one event aside and recomputes the score. |
+| `credit events` | Prints every event in the record, one JSON line each. |
+| `credit report` | Writes the printable credit report as HTML, one page per product. |
+
+## The score
+
+Scores run from 100 to 600, a three digit range that reads like a credit
+score and stays apart from the 300 to 850 range people know from their own
+reports. A new domain starts at 350 with no authority granted.
+
+| Band | Score | Tier the score supports |
+| --- | --- | --- |
+| Prime | 550 to 600 | 3 |
+| Near Prime | 450 to 549 | 2 |
+| Subprime | 300 to 449 | 1 |
+| Deep Subprime | 100 to 299 | 0 |
+
+Points work the way pinball scores them:
+
+- **Base.** Each scored session or settled action sets a target of
+  350 + 250 × delta, and the score moves part of the way toward it.
+- **Step.** The score moves 20% of the way. Older play fades as new play
+  arrives, the way a moving average does.
+- **Multiplier.** Stronger evidence moves the score further: a company's
+  confirmation 1.5 times as far, an outside verification or a contradiction
+  twice as far.
+- **Combo.** Each consecutive success after the first adds 0.25 to the
+  multiplier on upward moves, up to 2 at five in a row. Any failure resets it.
+- **Tilt.** A contradicted action, or an attempt at an action you blocked,
+  resets the combo and drops the active tier one step on the spot.
+- **Replay line.** Crossing a tier line earns the right to ask you for a
+  grant. `close`, `settle` and `show` say when a higher tier is available;
+  nothing changes until you grant it.
+
+No single event moves the score more than 60% of the way to its target.
+
+### What earns credit
+
+Drafted work is scored on how much you changed before you used it:
+
+| What you did | Delta |
+| --- | --- |
+| Accepted it untouched | +1 |
+| Changed under 15% of the words | +0.5 |
+| Changed 15% to 50% | −0.2 |
+| Changed more than 50% | −0.5 |
+| Rejected it, or the session crashed | −1 |
+| Closed it without review | not scored |
+
+Edits measure acceptance, and a pleasing but wrong answer can be accepted
+unchanged. Actions taken in the world (a calendar change, a payment, a form
+sent) are scored on how far the proof got, once it settles:
+
+| Evidence | `--evidence` | Delta | Multiplier |
+| --- | --- | --- | --- |
+| Verified by a source other than the helper | `verified` | +1 | 2 |
+| The company confirmed receipt | `company` | +0.5 | 1.5 |
+| The exchange was recorded, nothing back yet | `exchange` | 0 | 1 |
+| Only the helper's own report | `helper` | −0.5 | 1 |
+| The company or the outcome contradicts the helper | `contradicted` | −1 | 2, and a tilt |
+
+Each action settles once. A contradiction may follow an earlier settlement of
+the same action, because evidence against can arrive late.
+
+## Authority
+
+A domain's active tier is the lowest of three numbers: the tier its score
+supports, the ceiling you granted, and its current tier.
+
+| Tier | Actions |
+| --- | --- |
+| 0 | `read_file`, `search`, `analyze` |
+| 1 | `stage_file`, `draft_code`, `stage_transaction` |
+| 2 | `write_file`, `edit_file`, `run_tests`, `internal_api`, `schedule_invite` |
+| 3 | `delete_file`, `commit_main`, `push_to_main`, `live_deploy`, `execute_payment`, `sign_payload`, `delete_branch`, `manage_secrets` |
+
+The rules:
+
+1. **Downgrades are automatic.** When a score drops below a tier's line, the
+   active tier contracts in the same write that records the session.
+2. **Upgrades take a fresh grant.** A recovered score never restores an old
+   tier. Run `grant` again, even to reauthorize the same ceiling.
+3. **History counts.** A grant reaches tier 2 only after 10 scored sessions or
+   actions, and tier 3 only after 25. A grant above what the score and history
+   support is applied at the highest tier they do support, and the output says
+   why.
+4. **Tier 3 waits.** A grant that raises a domain to tier 3 applies tier 2
+   now and records the request. After 24 hours, `grant --confirm` applies
+   tier 3 if the domain still qualifies. Lowering the ceiling cancels it.
+5. **Minimum scores.** `--min-score edit_file=470,run_tests=420` attaches a
+   minimum to a single action. When the score falls below one, that action is
+   held until your next grant, the same way a tier contracts. `--min-score
+   none` clears them.
+6. **Revoking is one step.** `grant --max-tier 0` takes effect at once.
+
+On top of the tier, the guard enforces the blocked list (which applies at
+every tier; `manage_secrets`, `delete_branch` and `push_to_main` are blocked by
+default), a separate yes for any action with a remote side effect, project
+relative paths with traversal and escaping symlinks rejected, and a spending
+cap per guarded session. Unknown actions are denied.
+
+## The passport and the guard
 
 ```ts
-import {
-  CreditGuardedSession, generateCreditPassport,
-} from "closedtab";
+import { CreditGuardedSession, generateCreditPassport } from "closedtab";
 
 const identity = { productId: "anthropic/claude", domain: "code-refactoring" };
-const passport = generateCreditPassport(identity); // Context only; never a security boundary
-// The host may include passport in its initial model context.
+// Context for the model: its limits and nothing else. Recorded as an inquiry.
+const passport = generateCreditPassport(identity, undefined, { reader: "my-host" });
 const session = new CreditGuardedSession(identity, { root: process.cwd() });
 
 // Every tool the host permits must pass through this boundary.
@@ -54,61 +159,79 @@ await session.execute(
 );
 ```
 
-For a real adapter, constrain the handler itself to the checked resource; do
-not validate one target and execute another. Do not expose unwrapped terminal,
-filesystem, HTTP, or payment interfaces to the agent. Do not allow a model to
-call `grant` or directly edit the vault. For a security boundary against an
-adversarial agent, the guard and ledger require an independent, more privileged
-process or OS sandbox: mode 0600 does **not** protect a file against a model
-with unrestricted code execution as the same user.
+The passport lists the active tier and ceiling, the actions the agent may
+attempt now, its paths, the blocked actions, the remote actions you have said
+yes to and those that still need your yes, and the session spending cap. It
+leaves the score out. An agent that can see its own score has a number to
+chase; the score is yours, and you set permissions against it. Refusals from
+the guard name the rule and never a score or threshold.
 
-Tool action types: Tier 0 `read_file`, `search`, `analyze`; Tier 1
-`stage_file`, `draft_code`, `stage_transaction`; Tier 2 `write_file`,
-`edit_file`, `run_tests`, `internal_api`, `schedule_invite`; Tier 3
-`delete_file`, `commit_main`, `push_to_main`, `live_deploy`,
-`execute_payment`, `sign_payload`, `delete_branch`, `manage_secrets`.
-Unknown actions are denied. Remote side effects additionally require explicit
-`allowed_actions`. Filesystem actions require project-relative allowed-path
-globs and reject traversal and symlinks escaping the project root. Payment
-limits are tracked per guarded session; **there is not yet a cross-process,
-atomic spending ledger**. Do not use the prototype to move real funds.
+`CreditGuardedSession` records an attempt at a blocked action as a tilt,
+because the passport told the agent the action was blocked. Other refusals
+are not recorded. Pass `recordTilts: false` to turn this off.
 
-Tier 1 staging actions must be implemented by the host in non-committing,
-isolated staging buffers. CT-ACE's action-name check alone does not turn a
-filesystem write into a staged operation.
+For a real adapter, constrain the handler to the checked resource; never
+validate one target and execute another. Keep unwrapped terminal, filesystem,
+HTTP and payment interfaces away from the agent, and never let a model call
+`grant` or edit the vault. Mode 0600 does not protect a file from a model that
+can run code as the same user, so a deployment that faces an adversarial agent
+runs the guard and the ledger in a separate, more privileged process.
 
-## Evidence and post-session scoring
+Tier 1 staging actions must be implemented by the host in isolated staging
+buffers; the action name alone does not turn a write into a staged write.
 
-Run `credit close` after the person's final edit or explicit rejection. The
-caller supplies the agent's delivered artifact and the user's final artifact,
-not a Git diff against the start of the agent session. The pure scoring
-function computes a token-based change ratio, then maps these outcomes to
-`delta` values: untouched accepted +1, small edit +0.5, medium edit -0.2,
-large edit -0.5, rejected or crashed -1. An unreviewed tab close, or
-"accepted" without both artifacts, produces an unscored AAR (delta null).
-Scores use `V_next = (1 - alpha) * V_prev + alpha * (5 + 5 * delta)`
-with alpha 0.2.
+## The record
 
-This measures *consumer acceptance and subsequent correction*, not factual
-truth in isolation. A pleasing but false output can be accepted unchanged;
-objective verification, task outcomes, and independent sources need their own
-evidence types in a later iteration. AAR summaries do not confer points.
+The ledger at `~/.closedtab/agent_credit_report.json` (format 2.0.0) is a list
+of events: `grant`, `grant_confirmed`, `session_closed`, `action_settled`,
+`blocked_attempt`, `inquiry` and `dispute`. Every score, tier and limit is
+computed from that list on every read, so a score always matches its
+history. The `products` block in the file is a snapshot for people reading
+it; the tool recomputes it and never trusts it. A malformed event fails
+closed.
 
-A host must call the finalizer explicitly; there is no automatic CLI/browser
-termination hook. Each close writes a private JSON AAR and updates
-`~/.closedtab/agent_credit_report.json`. The vault is per-device, mode 0700,
-ledger 0600; it is never automatically pushed to Git or shared with providers.
-The passport contains only product/domain, score, effective ceiling, and
-configured constraints. It does not export the user's private feedback history.
+Each change happens under a lock file, so a host's guard and your CLI cannot
+overwrite each other's events. Each closed session also writes a private
+session file under `~/.closedtab/aars/`. Nothing is sent to a provider or
+pushed to Git.
 
-## Work remaining for an end-to-end runtime
+A dispute sets one session, settled action or blocked attempt aside and
+recomputes the score from the rest. A dispute can lower authority (if the
+recomputed score no longer supports a tier) and never raises it; grant again
+for that. A grant records the tier it produced when it was made, and a later
+replay never exceeds it.
 
-1. Connect a specific agent host's tool dispatch to `CreditGuardedSession`,
-   with enforceable per-resource adapters and no parallel unguarded escape route.
-2. Capture the accepted/rejected/edited signal at the UI's actual review point
-   and call `finalizeCreditSession` from its lifecycle handler.
-3. Add atomic cross-process write locking, independent guard permissions, scoped
-   API tokens, and a transaction broker before treating this as secure for
-   concurrent agents, network effects, or real financial actions.
-4. Test the quality of passive edit-delta signals against actual observed task
-   success and user-specified task expectations.
+A ledger from the first prototype (format 1.0.0, scored 0 to 10) is read as one
+baseline event per domain, with scores mapped onto the new range
+(100 + 50 × the old score), and is saved in the new format on the next change.
+Its 30 most recent session summaries are dropped from the ledger; the session
+files under `aars/` stay where they are.
+
+## The printable report
+
+`credit report` writes one page per product, laid out like a consumer credit
+report:
+
+| Credit report section | In the agent credit report |
+| --- | --- |
+| Score and reasons | Each task's score and band, with the three events that moved it most |
+| Accounts | Each task with its active tier, ceiling, what you could grant next, and the limits you set |
+| Payment history | The last 24 sessions and actions as a row of marks, tilts outlined, disputes struck through |
+| Inquiries | Which agent read its limits, for which task, how often, first and last |
+| Collections and public records | Held, blocked and contradicted actions |
+| How to dispute | The `credit dispute` command, with every entry's event id |
+
+The page reads in black and white, prints on letter and A4, uses tabular
+figures and system fonts, and has nothing that needs color to read. A
+product with three or more tasks adds a summary table and may run past one
+page. Print it or save it as a PDF from the browser.
+
+## Limits of this prototype
+
+1. It enforces what a host routes through `CreditGuardedSession`. Connecting a
+   specific agent host's tool dispatch is the next step.
+2. A host has to capture the accepted, edited or rejected signal at its own
+   review point and call `finalizeCreditSession`.
+3. Spending caps last one guarded session. There is no shared spending ledger
+   across processes, so real money stays out of it.
+4. The edit signal needs testing against observed task success.

@@ -66,7 +66,8 @@ Usage:
       Line a record up against a machine trace of what the agent actually did.
 
   closedtab credit help
-      Consumer-owned agent credit: local ratings, grants, passport, guard checks, and session closure.
+      A credit record you keep for each AI product: scores by task, grants, passport,
+      guard checks, disputes, and a printable credit report.
 
   -h, --help    Show this help.`;
 
