@@ -1,31 +1,67 @@
 name: Publish to npm
 
-# Publishes closedtab to npm via npm Trusted Publishing (OIDC) — no tokens.
-# Triggered by publishing a GitHub Release (bump the version first), or manually.
+# npm Trusted Publishing (OIDC), with tests before release.
+# The workflow-change push trigger publishes the already-bumped 0.6.0 release.
+# Future releases may continue to use GitHub Releases or manual dispatch.
 on:
+  pull_request:
+    paths:
+      - .github/workflows/publish.yml
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish.yml
   release:
     types: [published]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write # required for npm Trusted Publishing (OIDC)
-
 jobs:
-  publish:
+  verify:
+    name: Build and test the release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      # Trusted Publishing (OIDC) needs npm >= 11.5.1; runners ship older.
-      - run: npm install -g npm@latest
-
+          node-version: '22'
       - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm pack --dry-run
 
-      # prepublishOnly runs clean + build + test; OIDC provides auth & provenance.
-      - run: npm publish
+  publish:
+    name: Publish unpublished version using npm OIDC
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+      - name: Use npm version supporting Trusted Publishing
+        run: npm install -g 'npm@^11.5.1'
+      - run: npm ci
+      - name: Check whether this exact version exists on npm
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          echo "Package version: $version"
+          if npm view "closedtab@$version" version --json >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "closedtab@$version is already on npm; skip publication."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            echo "closedtab@$version is absent; publish after successful verification."
+          fi
+      - name: Publish with npm Trusted Publishing and provenance
+        if: steps.version.outputs.already_published == 'false'
+        run: npm publish --provenance --access public
